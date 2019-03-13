@@ -12,8 +12,9 @@ module test_sign_extend;
 endmodule
 
 
-module sign_extend(sign_ext_out, sign_ext_in);
+module sign_extend(sign_ext_out, sign_ext_in, sign_ext);
     output [31:0] sign_ext_out;
     input [15:0] sign_ext_in;
-    assign sign_ext_out = (sign_ext_in >> 15) ? (32'hFFFF0000 | sign_ext_in) : (32'h0 | sign_ext_in);
+    input  sign_ext; // 0-高位用0扩展; 1-高位用符号扩展
+    assign sign_ext_out = sign_ext ? (sign_ext_in[15] ? {16'hffff, sign_ext_in} : {16'h0000, sign_ext_in}) : {16'h0000, sign_ext_in};
 endmodule
