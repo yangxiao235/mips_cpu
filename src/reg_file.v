@@ -1,3 +1,5 @@
+`include "global.v"
+
 module test_register_file;
     reg[4:0] rid1, rid2;
     reg[4:0] wid;
@@ -47,13 +49,8 @@ module reg_file(
     input[31:0] reg_file_write_data);
 
     reg[31:0] registers[31:0];
-    initial begin
-        registers[0] = 0;
-        registers[1] = 2;
-        registers[2] = 3;
-        registers[3] = 5;
-        registers[4] = 7;
-    end
+    initial registers[0] = 32'h0; // $zero
+
     // 读寄存器1
     reg dirty;
     always @(reg_file_read1, reg_file_read2, dirty) begin
@@ -63,10 +60,10 @@ module reg_file(
     end
     // 写寄存器
     always @(posedge reg_file_clk)
-        if (reg_file_write_sig) begin
-            if (reg_file_write_id != 5'h0) begin  // 0号寄存器用于$zero, 不能写
-                registers[reg_file_write_id] = reg_file_write_data;
-                dirty = 1;
+            if (reg_file_write_sig) begin
+                if (reg_file_write_id != 5'h0) begin  // 0号寄存器用于$zero, 不能写
+                    registers[reg_file_write_id] = reg_file_write_data;
+                    dirty = 1;
+                end
             end
-        end
 endmodule

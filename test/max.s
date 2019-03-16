@@ -9,7 +9,7 @@ array: .word 1, -1, 4, -3, 0
 main:
     la  $s0, array # array
     lw  $t0, 0($s0) # max
-    addi $t1, $zero, 16 # i <- len - 1
+    addi $t1, $zero, 16 # i <- 4*(len - 1)
 
 loop:
     add  $s2, $s0, $t1  # array + i

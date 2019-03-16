@@ -1,4 +1,7 @@
 `include  "pc.v"
+`include  "reg_file.v"
+`include  "sign_extend.v"
+`include  "alu.v"
 
 // cpu_addr: 读入cpu或写入内存的内存单元地址, 每次读出或者写入内存的大小为1个字(4 bytes)
 // cpu_rd: cpu读内存信号
@@ -82,14 +85,15 @@ module cpu(cpu_data_out_bus, cpu_data_in_bus, cpu_addr_bus, cpu_rd, cpu_wr, cpu_
     initial mem_read = 1; // cpu启动开始读第一条指令
     assign cpu_wr = mem_write;
 
-    wire [31:0] inst;
+    reg [31:0] inst;
     wire [5:0] inst_op;
     wire [5:0] funct;
     wire [5:0] rs, rt, rd;
     wire [15:0] imm16;
     wire [25:0] imm26;
-    reg inst_or_data; // cpu_data_in_bus = 1为数据, = 0为指令
-
+    reg addr_src; // cpu_data_in_bus = 1为数据, = 0为指令
+    reg mem_addr_src; // 地址来自pc_out(0)或者来自alu_out(1)
+    reg inst_ready;
     assign inst_op = inst[31:26];
     assign imm16 = inst[15:0];
     assign imm26 = inst[25:0];
@@ -107,14 +111,15 @@ module cpu(cpu_data_out_bus, cpu_data_in_bus, cpu_addr_bus, cpu_rd, cpu_wr, cpu_
     // 增加一小段延迟, 将这两个时间点分开.
     // 仅仅解码在时钟上升沿后需要小段时间,其他写操作假定在时钟上升沿发生后立即写入.
     // 延迟功能在pc模块实现.
-    assign  inst =  cpu_data_in_bus;
-    always @(posedge clk) begin
-        mem_read <= 1'b1;
-        inst_or_data = 0;
+    always @(pc_out) begin   // 取指令
+        mem_read = 1'b1;   // 读取内存
+        addr_src = 0; // 0-取指令:p c_out作为地址; 1-存取数据: alu_out作为地址
+        #1 inst = cpu_data_in_bus;
     end
-    assign cpu_addr_bus = inst_or_data ? alu_out : pc_out; // 取指令或者取数据
+
+    assign cpu_addr_bus = addr_src ? alu_out : pc_out; // 取指令或者取数据
     // 跳转指令
-    assign pc_branch = branch;
+    assign pc_branch = branch ? alu_zero : 0;
     assign pc_jmp = jump;
     assign pc_offset_addr = branch ? sign_ext_out : (jump ? imm26 : 32'hx);
     // 寄存器文件
@@ -133,7 +138,7 @@ module cpu(cpu_data_out_bus, cpu_data_in_bus, cpu_addr_bus, cpu_rd, cpu_wr, cpu_
      always @(inst) begin // 指令解码
         if (inst == 32'h0) // nop
             {reg_write, branch, mem_read, mem_write} <=
-                        7'b0000;
+                        7'b0010;
         else begin
             casex (inst_op)
             6'd0  :
@@ -143,68 +148,103 @@ module cpu(cpu_data_out_bus, cpu_data_in_bus, cpu_addr_bus, cpu_rd, cpu_wr, cpu_
 
                         begin
                             alu_ctrl <= ALU_CTRL_ADD; // add
-                            {reg_dst, reg_write, alu_src, mem_to_reg, branch, mem_read, mem_write} <=
-                                7'b110_0000;
+                            {
+                                reg_dst, reg_write, alu_src,
+                                mem_to_reg, branch, mem_read,
+                                mem_write
+                            } <= 7'b_110_000_0;
                         end
                     6'd34 :
                         begin
                             alu_ctrl <= ALU_CTRL_SUB; // sub
-                            {reg_dst, reg_write, alu_src, mem_to_reg, branch, mem_read, mem_write} <=
-                                7'b110_0000;
+                            {
+                                reg_dst, reg_write, alu_src,
+                                mem_to_reg, branch, mem_read,
+                                mem_write
+                            } <= 7'b_110_000_0;
                         end
                     6'd36 :
                         begin
                             alu_ctrl <= ALU_CTRL_AND; // and
-                            {reg_dst, reg_write, alu_src, mem_to_reg, branch, mem_read, mem_write} <=
-                                7'b110_0000;
+                            {
+                                reg_dst, reg_write, alu_src,
+                                mem_to_reg, branch, mem_read,
+                                mem_write
+                            } <= 7'b_110_000_0;
                         end
                     6'd37 :
                         begin
                             alu_ctrl <= ALU_CTRL_OR; // or
-                            {reg_dst, reg_write, alu_src, mem_to_reg, branch, mem_read, mem_write} <=
-                                7'b110_0000;
+                            {
+                                reg_dst, reg_write, alu_src,
+                                mem_to_reg, branch, mem_read,
+                                mem_write
+                            } <= 7'b_110_000_0;
                         end
                     6'd42 :
                         begin
                             alu_ctrl <= ALU_CTRL_SLT; // slt
-                            {reg_dst, reg_write, alu_src, mem_to_reg, branch, mem_read, mem_write} <=
-                                7'b110_0000;
+                            {
+                                reg_dst, reg_write, alu_src,
+                                mem_to_reg, branch, mem_read,
+                                mem_write
+                            } <= 7'b_110_000_0;
                         end
-                    6'd12 :  syscall  <= 1;            // syscall
+                    6'd12 :  syscall  <= 1;
                     default : $display("Unknown alu funct code: %b", funct);
                     endcase
                 end // end of 6'd0
-            6'd8 :   // addi, 立即数作符号扩展
+            6'd8 :   // addi, 立即数作符号扩展    // sys
                 begin
-                    {reg_dst, reg_write, alu_src, mem_to_reg, branch, mem_read, mem_write, sign_expand} <=
-                        7'b011_0000_1;
+                    {
+                        reg_dst, reg_write, alu_src,
+                        mem_to_reg, branch, mem_read,
+                        mem_write, sign_expand
+                    } <= 8'b_011_0000_1;
                     alu_ctrl <= ALU_CTRL_ADD;
                 end
             6'd13:   // ori, 立即数作0扩展
                 begin
-                {reg_dst, reg_write, alu_src, mem_to_reg, branch, mem_read, mem_write, sign_expand} <=
-                        7'b011_0000_0;
+                {
+                    reg_dst, reg_write, alu_src,
+                    mem_to_reg, branch, mem_read,
+                    mem_write, sign_expand
+                } <= 8'b_011_0000_0;
                 alu_ctrl <= ALU_CTRL_OR;
                 end
             6'd35 :  // lw
                 begin
-                    {reg_dst, reg_write, alu_src, mem_to_reg, branch, mem_read, mem_write, jump, inst_or_data, sign_expand} <=
-                        7'b011_101_0011;
+                    {
+                        reg_dst, reg_write, alu_src,
+                        mem_to_reg, branch, mem_read,
+                        mem_write, jump, addr_src,
+                        sign_expand
+                    } <= 10'b_011_101_001_1;
                 end
             6'd43 :  // sw
                 begin
-                    {reg_dst, reg_write, alu_src, mem_to_reg, branch, mem_read, mem_write, jump, sign_expand} <=
-                        7'bx01_x00_101;
+                    {
+                        reg_dst, reg_write, alu_src,
+                        mem_to_reg, branch, mem_read,
+                        mem_write, jump, sign_expand,
+                        addr_src
+                    } <= 10'b_x01_x01_101_1;
                 end
             6'd4  :  // beq, branch由运算结果给出
                 begin
-                    {reg_dst, reg_write, alu_src, mem_to_reg, mem_read, mem_write, jump} <=
-                        7'bx00_x000;
+                    {
+                        reg_dst, reg_write, alu_src,
+                        mem_to_reg, mem_read, mem_write,
+                        jump, branch
+                    } <= 7'b_x00_x00_01;
                 end
             6'd2  :  // j
                 begin
-                    {reg_dst, reg_write, alu_src, mem_to_reg, branch, mem_read, mem_write, jump} <=
-                        7'bx00_x0001;
+                    {
+                        reg_dst, reg_write, alu_src,
+                        mem_to_reg, branch, mem_read,
+                        mem_write, jump, branch
+                    } <= 8'b_x00_x00_010;
                 end
             default : $display("Unknown opcode: %b", inst_op);
             endcase // casex (inst_op)
@@ -231,6 +271,11 @@ module cpu(cpu_data_out_bus, cpu_data_in_bus, cpu_addr_bus, cpu_rd, cpu_wr, cpu_
                 $write(">>%b\n", reg_file.registers[4]);
             36 :    // print integer as unsigned
                 $write(">>%d\n", reg_file.registers[4]);
+            10 : // 退出模拟
+                begin
+                    $display(">>Program terminated.");
+                    $stop;
+                end
             default: $display(">>Syscall service %d is not implementd now.", reg_file.registers[2]);
             endcase
 

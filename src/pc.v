@@ -1,3 +1,5 @@
+`include "global.v"
+
 module  test_pc;
     reg clk;
     initial clk = 0;
@@ -6,9 +8,9 @@ module  test_pc;
     wire [31:0] pc_out;
     reg branch, jmp;
     reg [31:0] offset_addr;
-    pc pc(pc_out, branch, jmp, offset_addr, clk);
+    current_pc current_pc(pc_out, branch, jmp, offset_addr, clk);
     always begin
-        $monitor($time, ", pc = %h, branch = %b, jmp = %b, offset_addr = %h",
+        $monitor($time, ", current_pc = %h, branch = %b, jmp = %b, offset_addr = %h",
             pc_out, branch, jmp, offset_addr);
         // 顺序执行
         #5;
@@ -46,12 +48,21 @@ module  pc(pc_out, pc_branch, pc_jmp, pc_offset_addr, pc_clk);
     assign pc_out = pc;
     wire [31:0] pc_offset_addr_shift2;
     assign pc_offset_addr_shift2 = pc_offset_addr << 2;
+    reg [4:0] wait_clk_count;
+    initial wait_clk_count = 0;
+
+    always @(posedge pc_clk)
+        if (wait_clk_count <= `WAIT_CLK_COUNT)
+            wait_clk_count = wait_clk_count + 1;
+
     always @(posedge pc_clk) begin
-        if (pc_branch)
-            pc <= #INST_DECODE_DELAY pc4 + pc_offset_addr_shift2;
-        else if (pc_jmp)
-            pc <= #INST_DECODE_DELAY {pc4[31:28], pc_offset_addr_shift2[27:0]};
-        else
-            pc <= #INST_DECODE_DELAY pc4;
-    end
+        if (wait_clk_count > `WAIT_CLK_COUNT) begin
+            if (pc_branch)
+                pc <= #INST_DECODE_DELAY pc4 + pc_offset_addr_shift2;
+            else if (pc_jmp)
+                pc <= #INST_DECODE_DELAY {pc4[31:28], pc_offset_addr_shift2[27:0]};
+            else
+                pc <= #INST_DECODE_DELAY pc4;
+        end // end of if(wait_clk_count)
+    end // end of always @(posedge..)
 endmodule

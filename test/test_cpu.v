@@ -1,9 +1,10 @@
 `include "src/cpu.v"
-`define DEBUG_CPU 1
+`include "src/mem.v"
+`include "src/sign_extend.v"
+`include "src/global.v"
+`include "src/pc.v"
+`include "src/reg_file.v"
 
-`ifndef DEBUG_CPU
-`define DEBUG_CPU 1
-`endif
 module  test_cpu;
     // cpu ports
     wire  [31:0] cpu_data_out_bus;
@@ -20,9 +21,9 @@ module  test_cpu;
     wire mem_rd, mem_wr, mem_clk;
     reg mem_rst, mem_dump; // 作为调试之用
 
+    // clk
     reg clk;
-    initial clk = 1;
-
+    initial clk = 0;
     // cpu
     assign cpu_data_in_bus = mem_rd_data;
     assign cpu_clk = clk;
@@ -40,7 +41,7 @@ module  test_cpu;
         , .mem_wr_data(mem_wr_data), .mem_clk(mem_clk), .mem_rst(mem_rst), .mem_dump(mem_dump));
 
     always
-        #5 clk = ~clk;
+       #5  clk = ~clk;
     initial begin
         $display("Initializing memory...");
         mem_rst = 1; // 内存初始化
@@ -55,8 +56,8 @@ module  test_cpu;
     always @(cpu.inst) begin
         if (`DEBUG_CPU) begin
             show_reg_file;
-            $display($time, ", pc=%h, inst=%h, alu_is=%h, alu_it=%h, alu_out=%h, alu_op= %d",
-                cpu.pc.pc, cpu.inst, cpu.alu.alu_in1, cpu.alu.alu_in2, cpu.alu.alu_out, cpu.alu.alu_ctrl);
+            $display($time, ", count=%d, pc=%h, inst=%h, alu_is=%h, alu_it=%h, alu_out=%h, alu_op= %d",
+                cpu.pc.pc/4, cpu.pc.pc, cpu.inst, cpu.alu.alu_in1, cpu.alu.alu_in2, cpu.alu.alu_out, cpu.alu.alu_ctrl);
         end
     end
 

@@ -38,12 +38,14 @@ module mem(mem_rd_data, mem_addr, mem_rd, mem_wr, mem_wr_data, mem_clk, mem_rst,
     input mem_rd, mem_wr, mem_clk;
     input mem_rst, mem_dump;
 
-    parameter MEM_SIZE = 256; // 256 words = 1024 Bytes
+    parameter MEM_SIZE = 1024; // 1024 words = 4096 Bytes
     reg [31:0] mem_array[0 : MEM_SIZE - 1];
     // 读数据
     always @(mem_rd, mem_addr) begin
         if (mem_rd)
-            mem_rd_data = mem_array[mem_addr[9:2]]; // [1:0]没有意义, 因为是按照4的倍数寻址的
+            mem_rd_data <= mem_array[mem_addr[9:2]]; // [1:0]没有意义, 因为是按照4的倍数寻址的
+        else
+            mem_rd_data <= 32'bx; // 无效读
     end
     // 写数据
     always @(posedge mem_clk)

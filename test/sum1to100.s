@@ -10,7 +10,7 @@
     .globl main
 main:
     add $s1, $zero, $zero # sum
-    addi $t0, $zero, 100   # i
+    addi $t0, $zero, 3   # i
     addi $t1, $zero, 1
 loop:
     beq $t0, $zero, done  # i == 0 ?
@@ -22,7 +22,7 @@ done:
     # print sum
     addi $v0, $v0, 1  # syscall 1 (print integer)
     add $a0, $s1, $zero # integer to print
-    syscall
+    syscall # 5050
 
     addi $v0, $zero, 10  # exit
     syscall
