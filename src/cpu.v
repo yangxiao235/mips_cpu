@@ -2,18 +2,20 @@
 `include  "reg_file.v"
 `include  "sign_extend.v"
 `include  "alu.v"
+`include  "cpu_control.v"
+`include  "decoder.v"
 
-// cpu_addr: è¯»å…¥cpuæˆ–å†™å…¥å†…å­˜çš„å†…å­˜å•å…ƒåœ°å€, æ¯æ¬¡è¯»å‡ºæˆ–è€…å†™å…¥å†…å­˜çš„å¤§å°ä¸º1ä¸ªå­—(4 bytes)
-// cpu_rd: cpuè¯»å†…å­˜ä¿¡å·
+// cpu_addr: ¶ÁÈëcpu»òĞ´ÈëÄÚ´æµÄÄÚ´æµ¥ÔªµØÖ·, Ã¿´Î¶Á³ö»òÕßĞ´ÈëÄÚ´æµÄ´óĞ¡Îª1¸ö×Ö(4 bytes)
+// cpu_rd: cpu¶ÁÄÚ´æĞÅºÅ
 //
 module cpu(cpu_data_out_bus, cpu_data_in_bus, cpu_addr_bus, cpu_rd, cpu_wr, cpu_clk, cpu_en);
-    output [31:0] cpu_data_out_bus; // å…¥æ•°æ®çº¿, cpuå†™å…¥å†…å­˜çš„æ•°æ®, 1 word
-    output [31:0] cpu_addr_bus; //åœ°å€æ€»çº¿, è¯»å…¥cpuæˆ–å†™å…¥å†…å­˜çš„å†…å­˜å•å…ƒåœ°å€, æ¯æ¬¡è¯»å‡ºæˆ–è€…å†™å…¥å†…å­˜çš„å¤§å°ä¸º1ä¸ªå­—(4 bytes)
-    output cpu_rd; // cpuè¯»å†…å­˜ä¿¡å·, æ•°æ®ä»cpu_data_in_busè¯»å…¥
-    output cpu_wr; // cpuå†™å†…å­˜ä¿¡å·, å†™æ•°æ®åœ¨cpu_data_out_bus
-    input  [31:0] cpu_data_in_bus;  // å‡ºæ•°æ®çº¿, cpuä»å†…å­˜ä¸­è¯»å…¥çš„æ•°æ®, 1 word
+    output [31:0] cpu_data_out_bus; // ÈëÊı¾İÏß, cpuĞ´ÈëÄÚ´æµÄÊı¾İ, 1 word
+    output [31:0] cpu_addr_bus; //µØÖ·×ÜÏß, ¶ÁÈëcpu»òĞ´ÈëÄÚ´æµÄÄÚ´æµ¥ÔªµØÖ·, Ã¿´Î¶Á³ö»òÕßĞ´ÈëÄÚ´æµÄ´óĞ¡Îª1¸ö×Ö(4 bytes)
+    output cpu_rd; // cpu¶ÁÄÚ´æĞÅºÅ, Êı¾İ´Ócpu_data_in_bus¶ÁÈë
+    output cpu_wr; // cpuĞ´ÄÚ´æĞÅºÅ, Ğ´Êı¾İÔÚcpu_data_out_bus
+    input  [31:0] cpu_data_in_bus;  // ³öÊı¾İÏß, cpu´ÓÄÚ´æÖĞ¶ÁÈëµÄÊı¾İ, 1 word
     input  cpu_clk;
-    input  cpu_en; // cpuä½¿èƒ½
+    input  cpu_en; // cpuÊ¹ÄÜ
 
 // constants
     parameter INST_OP_ADD = 6'd0;
@@ -31,7 +33,7 @@ module cpu(cpu_data_out_bus, cpu_data_in_bus, cpu_addr_bus, cpu_rd, cpu_wr, cpu_
     parameter ALU_CTRL_SUB = 4'h6;
     parameter ALU_CTRL_AND = 4'h0;
     parameter ALU_CTRL_OR = 4'h1;
-    parameter ALU_CTRL_SLT = 4'h7; // æ“ä½œç ä¸èƒ½ç®€å•çš„ç”¨ALU_CTRL_SUBä»£æ›¿, å› ä¸ºè¿™é‡Œå¯èƒ½å­˜åœ¨æº¢å‡º
+    parameter ALU_CTRL_SLT = 4'h7; // ²Ù×÷Âë²»ÄÜ¼òµ¥µÄÓÃALU_CTRL_SUB´úÌæ, ÒòÎªÕâÀï¿ÉÄÜ´æÔÚÒç³ö
 // alu ports
     wire [31:0] alu_out;
     wire alu_zero;
@@ -39,7 +41,7 @@ module cpu(cpu_data_out_bus, cpu_data_in_bus, cpu_addr_bus, cpu_rd, cpu_wr, cpu_
     wire alu_carry;
     wire [31:0] alu_in1;
     wire [31:0] alu_in2;
-    reg [3:0]  alu_ctrl;
+    wire [3:0]  alu_ctrl;
 
 // regfile ports
     wire [31:0] reg_file_out1;
@@ -58,212 +60,92 @@ module cpu(cpu_data_out_bus, cpu_data_in_bus, cpu_addr_bus, cpu_rd, cpu_wr, cpu_
 
 // pc ports
     wire [31:0] pc_out;
-    wire pc_branch; // çŸ­è·³, çŸ­è·³çš„offset_addræ˜¯Iå‹æŒ‡ä»¤çš„ä½16ä½
-    wire pc_jmp; // é•¿è·³, é•¿è·³çš„offset_addræ˜¯Jå‹æŒ‡ä»¤çš„ä½26ä½
+    wire pc_branch; // ¶ÌÌø, ¶ÌÌøµÄoffset_addrÊÇIĞÍÖ¸ÁîµÄµÍ16Î»
+    wire pc_jmp; // ³¤Ìø, ³¤ÌøµÄoffset_addrÊÇJĞÍÖ¸ÁîµÄµÍ26Î»
     wire [31:0] pc_offset_addr;
     wire pc_clk;
 
-// ctrl
-    reg reg_dst; // å¯„å­˜å™¨æ–‡ä»¶å†™idæ¥æºé€‰æ‹©, 0:æ¥è‡ªæŒ‡ä»¤çš„Rt, 1: æ¥è‡ªæŒ‡ä»¤çš„Rd
-    reg reg_write; // å¯„å­˜å™¨æ–‡ä»¶å†™ä½¿èƒ½
-    reg alu_src; // alu 2å·å£æ•°æ®æ¥æºé€‰æ‹©, 0: æ¥è‡ªå¯„å­˜å™¨æ–‡ä»¶2å·å£; 1: æ¥è‡ªæŒ‡ä»¤16ç«‹å³æ•°çš„32ä½ç¬¦å·æ‰©å±•
-    reg mem_to_reg; // å¯„å­˜å™¨æ–‡ä»¶å†™æ•°æ®æ¥æºé€‰æ‹©, 0:æ¥è‡ªå†…å­˜; 1:æ¥è‡ªaluç»“æœ
-    reg branch; // çŸ­è·³, pcè·³åˆ°{pc + 4 + imm16 << 2}
-    reg jump; // é•¿è·³, pcè·³åˆ°: {(pc + 4)[31:28], imm26 << 2, 2'b00}
-    reg mem_read; // å†…å­˜è¯»ä½¿èƒ½
-    reg mem_write; // å†…å­˜å†™ä½¿èƒ½
-    reg sign_expand; // 16ä½æ‰©å±•ä¸º32ä½. 1-ç¬¦å·æ‰©å±•, 0-0æ‰©å±•
-    reg syscall; // ç³»ç»Ÿè°ƒç”¨
-// sign extend
-    assign  sign_ext = sign_expand;
+// cpu control ports
+    wire cpu_ctrl_mem_addr_src;
+    wire cpu_ctrl_branch;  
+    wire cpu_ctrl_jmp;
+    wire cpu_ctrl_reg_dst;  
+    wire cpu_ctrl_mem_to_reg; 
+    wire cpu_ctrl_reg_write; 
+    wire cpu_ctrl_alu_src;  
+    wire cpu_ctrl_sign_expand;
+    wire  cpu_ctrl_mem_read; 
+    wire cpu_ctrl_mem_write; 
+    wire [3:0] cpu_ctrl_alu_ctrl;
+    wire cpu_ctrl_syscall;
+    wire [31:0] cpu_ctrl_inst;
 
-// renaming
+// decoder ports
+    wire [5:0] decode_opcode;
+    wire [5:0] decode_funct;
+    wire [4:0] decode_rs;
+    wire [4:0] decode_rt;
+    wire [4:0] decode_rd;
+    wire [15:0] decode_imm16;
+    wire [25:0] decode_jmp_target;
+    wire [4:0] decode_shamt;
+    wire [31:0] decode_inst;
+// Ê±ÖÓ
     assign clk = ~cpu_en | cpu_clk;
     assign pc_clk = clk;
     assign reg_file_clk = clk;
-    assign cpu_rd = mem_read;
-    initial mem_read = 1; // cpuå¯åŠ¨å¼€å§‹è¯»ç¬¬ä¸€æ¡æŒ‡ä»¤
-    assign cpu_wr = mem_write;
+    assign cpu_rd = cpu_ctrl_mem_read;
+    assign cpu_wr = cpu_ctrl_mem_write;
 
+    // È¡Ö¸Áî
+    // (1) Èç¹ûµ±Ç°Ö´ĞĞµÄÖ¸ÁîÊÇlw, ÄÇÃ´instÔÚÕâÆÚ¼ä»áÊÜlwÓ°Ïì, µ«ÊÇinst½öÔÚÊ±ÖÓÉÏÉıÑØÓĞ×÷ÓÃ,
+    // µ½Ê±ÖÓÉÏÉıÑØÊ±, inst½«±»ÏÂÒ»ÌõÖ¸ÁîË¢ĞÂ, ËùÒÔÓ°ÏìÎŞ¹Ø½ôÒª
+    // (2) ¶ÔÓÚINST_DECODE_DELAY, ¿¼ÂÇµ±Ç°Ö´ĞĞµÄÖ¸ÁîÎªlw $s1, ($s1).
+    // ÓÉÓÚ¼Ä´æÆ÷ÎÄ¼şÒ²ÔÚÊ±ÖÓÉÏÉıÑØĞ´ÈëÊı¾İ, µ«ÊÇÓë´ËÍ¬Ê±ÏÂÒ»ÌõÖ¸ÁîÒ²½«»á
+    // Á¢¼´±»½âÂë, µ±Ç°Ö¸Áî¿ÉÄÜÎŞ·¨Ğ´»ØÊı¾İ¾Í±»ÏÂÒ»ÌõÖ¸Áî¸Ä±äÁË¿ØÖÆ×´Ì¬
+    // Ôö¼ÓÒ»Ğ¡¶ÎÑÓ³Ù, ½«ÕâÁ½¸öÊ±¼äµã·Ö¿ª.
+    // ½ö½ö½âÂëÔÚÊ±ÖÓÉÏÉıÑØºóĞèÒªĞ¡¶ÎÊ±¼ä,ÆäËûĞ´²Ù×÷¼Ù¶¨ÔÚÊ±ÖÓÉÏÉıÑØ·¢ÉúºóÁ¢¼´Ğ´Èë.
+    // ÑÓ³Ù¹¦ÄÜÔÚpcÄ£¿éÊµÏÖ.
     reg [31:0] inst;
-    wire [5:0] inst_op;
-    wire [5:0] funct;
-    wire [5:0] rs, rt, rd;
-    wire [15:0] imm16;
-    wire [25:0] imm26;
-    reg addr_src; // cpu_data_in_bus = 1ä¸ºæ•°æ®, = 0ä¸ºæŒ‡ä»¤
-    reg mem_addr_src; // åœ°å€æ¥è‡ªpc_out(0)æˆ–è€…æ¥è‡ªalu_out(1)
-    reg inst_ready;
-    assign inst_op = inst[31:26];
-    assign imm16 = inst[15:0];
-    assign imm26 = inst[25:0];
-    assign funct = inst[5:0];
-    assign rs = inst[25:21];
-    assign rt = inst[20:16];
-    assign rd = inst[15:11];
-
-    // å–æŒ‡ä»¤
-    // (1) å¦‚æœå½“å‰æ‰§è¡Œçš„æŒ‡ä»¤æ˜¯lw, é‚£ä¹ˆinståœ¨è¿™æœŸé—´ä¼šå—lwå½±å“, ä½†æ˜¯instä»…åœ¨æ—¶é’Ÿä¸Šå‡æ²¿æœ‰ä½œç”¨,
-    // åˆ°æ—¶é’Ÿä¸Šå‡æ²¿æ—¶, instå°†è¢«ä¸‹ä¸€æ¡æŒ‡ä»¤åˆ·æ–°, æ‰€ä»¥å½±å“æ— å…³ç´§è¦
-    // (2) å¯¹äºINST_DECODE_DELAY, è€ƒè™‘å½“å‰æ‰§è¡Œçš„æŒ‡ä»¤ä¸ºlw $s1, ($s1).
-    // ç”±äºå¯„å­˜å™¨æ–‡ä»¶ä¹Ÿåœ¨æ—¶é’Ÿä¸Šå‡æ²¿å†™å…¥æ•°æ®, ä½†æ˜¯ä¸æ­¤åŒæ—¶ä¸‹ä¸€æ¡æŒ‡ä»¤ä¹Ÿå°†ä¼š
-    // ç«‹å³è¢«è§£ç , å½“å‰æŒ‡ä»¤å¯èƒ½æ— æ³•å†™å›æ•°æ®å°±è¢«ä¸‹ä¸€æ¡æŒ‡ä»¤æ”¹å˜äº†æ§åˆ¶çŠ¶æ€
-    // å¢åŠ ä¸€å°æ®µå»¶è¿Ÿ, å°†è¿™ä¸¤ä¸ªæ—¶é—´ç‚¹åˆ†å¼€.
-    // ä»…ä»…è§£ç åœ¨æ—¶é’Ÿä¸Šå‡æ²¿åéœ€è¦å°æ®µæ—¶é—´,å…¶ä»–å†™æ“ä½œå‡å®šåœ¨æ—¶é’Ÿä¸Šå‡æ²¿å‘ç”Ÿåç«‹å³å†™å…¥.
-    // å»¶è¿ŸåŠŸèƒ½åœ¨pcæ¨¡å—å®ç°.
-    always @(pc_out) begin   // å–æŒ‡ä»¤
-        mem_read = 1'b1;   // è¯»å–å†…å­˜
-        addr_src = 0; // 0-å–æŒ‡ä»¤:p c_outä½œä¸ºåœ°å€; 1-å­˜å–æ•°æ®: alu_outä½œä¸ºåœ°å€
+    always @(pc_out) begin   // È¡Ö¸Áî
         #1 inst = cpu_data_in_bus;
     end
-
-    assign cpu_addr_bus = addr_src ? alu_out : pc_out; // å–æŒ‡ä»¤æˆ–è€…å–æ•°æ®
-    // è·³è½¬æŒ‡ä»¤
-    assign pc_branch = branch ? alu_zero : 0;
-    assign pc_jmp = jump;
-    assign pc_offset_addr = branch ? sign_ext_out : (jump ? imm26 : 32'hx);
-    // å¯„å­˜å™¨æ–‡ä»¶
-    assign reg_file_read1 = rs;
-    assign reg_file_read2 = rt;
-    assign reg_file_write_sig = reg_write;
-    assign reg_file_write_id = reg_dst ? rd : rt;
-    assign reg_file_write_data = mem_to_reg ?  cpu_data_in_bus : alu_out;
+    // cpu control
+    assign cpu_ctrl_inst = inst;
+    // instruction decoder
+    assign decode_inst = inst;
+    // cpu
+    assign cpu_addr_bus = cpu_ctrl_mem_addr_src ? alu_out : pc_out; // È¡Ö¸Áî»òÕßÈ¡Êı¾İ
     assign cpu_data_out_bus = reg_file_out2; // lw $s1, 0($s2)
+    // Ìø×ª
+    assign pc_branch = cpu_ctrl_branch ? alu_zero : 0;
+    assign pc_jmp = cpu_ctrl_jmp;
+    assign pc_offset_addr = cpu_ctrl_branch ? sign_ext_out : (cpu_ctrl_jmp ? decode_jmp_target : 32'hx);
+    // ¼Ä´æÆ÷ÎÄ¼ş
+    assign reg_file_read1 = decode_rs;
+    assign reg_file_read2 = decode_rt;
+    assign reg_file_write_sig = cpu_ctrl_reg_write;
+    assign reg_file_write_id = cpu_ctrl_reg_dst ? decode_rd : decode_rt;
+    assign reg_file_write_data = cpu_ctrl_mem_to_reg ?  cpu_data_in_bus : alu_out;
     // alu
     assign alu_in1 = reg_file_out1;
-    assign alu_in2 = alu_src ? sign_ext_out : reg_file_out2;
-
-    pc pc(.pc_out(pc_out), .pc_branch(pc_branch), .pc_jmp(pc_jmp), .pc_offset_addr(pc_offset_addr), .pc_clk(pc_clk));
-    // æŒ‡ä»¤è§£ç 
-     always @(inst) begin // æŒ‡ä»¤è§£ç 
-        if (inst == 32'h0) // nop
-            {reg_write, branch, mem_read, mem_write} <=
-                        7'b0010;
-        else begin
-            casex (inst_op)
-            6'd0  :
-                begin
-                    casex (funct)
-                    6'd32 :
-
-                        begin
-                            alu_ctrl <= ALU_CTRL_ADD; // add
-                            {
-                                reg_dst, reg_write, alu_src,
-                                mem_to_reg, branch, mem_read,
-                                mem_write
-                            } <= 7'b_110_000_0;
-                        end
-                    6'd34 :
-                        begin
-                            alu_ctrl <= ALU_CTRL_SUB; // sub
-                            {
-                                reg_dst, reg_write, alu_src,
-                                mem_to_reg, branch, mem_read,
-                                mem_write
-                            } <= 7'b_110_000_0;
-                        end
-                    6'd36 :
-                        begin
-                            alu_ctrl <= ALU_CTRL_AND; // and
-                            {
-                                reg_dst, reg_write, alu_src,
-                                mem_to_reg, branch, mem_read,
-                                mem_write
-                            } <= 7'b_110_000_0;
-                        end
-                    6'd37 :
-                        begin
-                            alu_ctrl <= ALU_CTRL_OR; // or
-                            {
-                                reg_dst, reg_write, alu_src,
-                                mem_to_reg, branch, mem_read,
-                                mem_write
-                            } <= 7'b_110_000_0;
-                        end
-                    6'd42 :
-                        begin
-                            alu_ctrl <= ALU_CTRL_SLT; // slt
-                            {
-                                reg_dst, reg_write, alu_src,
-                                mem_to_reg, branch, mem_read,
-                                mem_write
-                            } <= 7'b_110_000_0;
-                        end
-                    6'd12 :  syscall  <= 1;
-                    default : $display("Unknown alu funct code: %b", funct);
-                    endcase
-                end // end of 6'd0
-            6'd8 :   // addi, ç«‹å³æ•°ä½œç¬¦å·æ‰©å±•    // sys
-                begin
-                    {
-                        reg_dst, reg_write, alu_src,
-                        mem_to_reg, branch, mem_read,
-                        mem_write, sign_expand
-                    } <= 8'b_011_0000_1;
-                    alu_ctrl <= ALU_CTRL_ADD;
-                end
-            6'd13:   // ori, ç«‹å³æ•°ä½œ0æ‰©å±•
-                begin
-                {
-                    reg_dst, reg_write, alu_src,
-                    mem_to_reg, branch, mem_read,
-                    mem_write, sign_expand
-                } <= 8'b_011_0000_0;
-                alu_ctrl <= ALU_CTRL_OR;
-                end
-            6'd35 :  // lw
-                begin
-                    {
-                        reg_dst, reg_write, alu_src,
-                        mem_to_reg, branch, mem_read,
-                        mem_write, jump, addr_src,
-                        sign_expand
-                    } <= 10'b_011_101_001_1;
-                end
-            6'd43 :  // sw
-                begin
-                    {
-                        reg_dst, reg_write, alu_src,
-                        mem_to_reg, branch, mem_read,
-                        mem_write, jump, sign_expand,
-                        addr_src
-                    } <= 10'b_x01_x01_101_1;
-                end
-            6'd4  :  // beq, branchç”±è¿ç®—ç»“æœç»™å‡º
-                begin
-                    {
-                        reg_dst, reg_write, alu_src,
-                        mem_to_reg, mem_read, mem_write,
-                        jump, branch
-                    } <= 7'b_x00_x00_01;
-                end
-            6'd2  :  // j
-                begin
-                    {
-                        reg_dst, reg_write, alu_src,
-                        mem_to_reg, branch, mem_read,
-                        mem_write, jump, branch
-                    } <= 8'b_x00_x00_010;
-                end
-            default : $display("Unknown opcode: %b", inst_op);
-            endcase // casex (inst_op)
-        end // end of if(inst == 32'h0)
-    end // always @(inst) begin
-
-    // ç³»ç»Ÿè°ƒç”¨syscallæŒ‡ä»¤
-    // $v0: å­˜æ”¾ä¾‹ç¨‹ç¼–å·
-    // $a0~$a1: å­˜æ”¾ä¾‹ç¨‹å‚æ•°
+    assign alu_ctrl = cpu_ctrl_alu_ctrl;
+    assign alu_in2 = cpu_ctrl_alu_src ? sign_ext_out : reg_file_out2;
+    // ·ûºÅÀ©Õ¹
+    assign  sign_ext = cpu_ctrl_sign_expand;
+    assign sign_ext_in = decode_imm16;
+    // ÏµÍ³µ÷ÓÃsyscallÖ¸Áî
+    // $v0: ´æ·ÅÀı³Ì±àºÅ
+    // $a0~$a1: ´æ·ÅÀı³Ì²ÎÊı
     wire signed [31:0] signed_a0 = reg_file.registers[4];
-    always @(syscall) begin
-        if (syscall) begin
-            syscall <= 0;
+    always @(cpu_ctrl_syscall) begin
+        if (cpu_ctrl_syscall) begin
             casex(reg_file.registers[2])  // $v0
-            1 :     // print integer, $a0ä¿å­˜æ•´æ•°
-                $write(">>%d\n",signed_a0); // $a0ä¸º4å·å¯„å­˜å™¨
-            4 :     // print null-terminated string, $a0ä¿å­˜é¦–åœ°å€
+            1 :     // print integer, $a0±£´æÕûÊı
+                $write(">>%d\n",signed_a0); // $a0Îª4ºÅ¼Ä´æÆ÷
+            4 :     // print null-terminated string, $a0±£´æÊ×µØÖ·
                 $write(">>%s\n", mem.mem_array[reg_file.registers[4]]);
-            11 :    // print character, $a0ä¿å­˜å­—ç¬¦
+            11 :    // print character, $a0±£´æ×Ö·û
                 $write(">>%c\n", reg_file.registers[4]);
             34 :    // print integer in hex
                 $write(">>%x\n", reg_file.registers[4]);
@@ -271,28 +153,70 @@ module cpu(cpu_data_out_bus, cpu_data_in_bus, cpu_addr_bus, cpu_rd, cpu_wr, cpu_
                 $write(">>%b\n", reg_file.registers[4]);
             36 :    // print integer as unsigned
                 $write(">>%d\n", reg_file.registers[4]);
-            10 : // é€€å‡ºæ¨¡æ‹Ÿ
+            10 : // ÍË³öÄ£Äâ
                 begin
                     $display(">>Program terminated.");
                     $stop;
                 end
             default: $display(">>Syscall service %d is not implementd now.", reg_file.registers[2]);
             endcase
-
-
         end
     end
 
-    alu alu(.alu_out(alu_out), .alu_zero(alu_zero), .alu_overflow(alu_overflow)
-        , .alu_carry(alu_carry), .alu_in1(alu_in1), .alu_in2(alu_in2)
-        , .alu_ctrl(alu_ctrl));
+    pc pc(
+        .pc_out(pc_out), 
+        .pc_branch(pc_branch), 
+        .pc_jmp(pc_jmp), 
+        .pc_offset_addr(pc_offset_addr), 
+        .pc_clk(pc_clk)
+    );
+    decoder decoder(
+        .decode_opcode(decode_opcode),
+        .decode_funct(decode_funct),
+        .decode_rs(decode_rs),
+        .decode_rt(decode_rt),
+        .decode_rd(decode_rd),
+        .decode_imm16(decode_imm16),
+        .decode_jmp_target(decode_jmp_target),
+        .decode_shamt(decode_shamt),
+        .decode_inst(decode_inst)
+    );
+    cpu_control cpu_control(
+        .cpu_ctrl_mem_addr_src(cpu_ctrl_mem_addr_src),
+        .cpu_ctrl_branch(cpu_ctrl_branch),
+        .cpu_ctrl_jmp(cpu_ctrl_jmp),
+        .cpu_ctrl_reg_dst(cpu_ctrl_reg_dst),
+        .cpu_ctrl_mem_to_reg(cpu_ctrl_mem_to_reg),
+        .cpu_ctrl_reg_write(cpu_ctrl_reg_write),
+        .cpu_ctrl_alu_src(cpu_ctrl_alu_src),
+        .cpu_ctrl_sign_expand(cpu_ctrl_sign_expand),
+        .cpu_ctrl_mem_read(cpu_ctrl_mem_read),
+        .cpu_ctrl_mem_write(cpu_ctrl_mem_write),
+        .cpu_ctrl_alu_ctrl(cpu_ctrl_alu_ctrl),
+        .cpu_ctrl_syscall(cpu_ctrl_syscall),
+        .cpu_ctrl_inst(cpu_ctrl_inst),
+        .cpu_ctrl_pc(pc_out)
+    );
+    alu alu(
+        .alu_out(alu_out),
+        .alu_zero(alu_zero),
+        .alu_overflow(alu_overflow),
+        .alu_carry(alu_carry),
+        .alu_in1(alu_in1),
+        .alu_in2(alu_in2),
+        .alu_ctrl(alu_ctrl)
+    );
+    reg_file reg_file(
+        .reg_file_out1(reg_file_out1), 
+        .reg_file_out2(reg_file_out2),
+        .reg_file_read1(reg_file_read1), 
+        .reg_file_read2(reg_file_read2), 
+        .reg_file_write_sig(reg_file_write_sig),
+        .reg_file_clk(reg_file_clk), 
+        .reg_file_write_id(reg_file_write_id), 
+        .reg_file_write_data(reg_file_write_data)
+    );
 
-    reg_file reg_file(.reg_file_out1(reg_file_out1), .reg_file_out2(reg_file_out2)
-    , .reg_file_read1(reg_file_read1), .reg_file_read2(reg_file_read2), .reg_file_write_sig(reg_file_write_sig)
-    , .reg_file_clk(reg_file_clk), .reg_file_write_id(reg_file_write_id), .reg_file_write_data(reg_file_write_data));
-
-
-    assign sign_ext_in = imm16;
     sign_extend sign_extend(.sign_ext_out(sign_ext_out), .sign_ext_in(sign_ext_in), .sign_ext(sign_ext));
 
 

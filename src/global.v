@@ -2,7 +2,7 @@
 `define GLOBAL
 
 `define DEBUG_CPU 0
-`define MAX 1
+`define SORT 1
 
 `ifdef LOGIC
 `define MEM_DATA_FILE  "test/logic.bin.txt"
